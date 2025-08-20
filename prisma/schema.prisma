@@ -1,0 +1,40 @@
+// Generator to create Prisma Client
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+// PostgreSQL datasource
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =========================
+// Models
+// =========================
+
+// Category table
+model Category {
+  id          String        @id @default(uuid())
+  name        String        @unique
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  transactions Transaction[]
+}
+
+// Transaction table
+model Transaction {
+  id          String    @id @default(uuid())
+  name        String
+  amount      Float
+  datetime    DateTime
+  isConfirm   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relation to Category
+  categoryId  String
+  category    Category  @relation(fields: [categoryId], references: [id])
+}
