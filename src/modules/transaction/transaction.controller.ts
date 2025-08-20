@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { TransactionService } from './transaction.service';
+import { successResponse } from '../../common/response/response.helper';
 
 @Controller('transactions')
 export class TransactionController {
@@ -16,12 +17,14 @@ export class TransactionController {
   @UseGuards(AuthGuard('jwt'))
   @Get()
   async findAll(@Request() req) {
-    return this.txService.findAll(req.user.id);
+    const transactions = await this.txService.findAll(req.user.userId);
+    return successResponse(transactions, 'Get transactions successfully', 200);
   }
 
   @UseGuards(AuthGuard('jwt'))
   @Post('create-text')
   async createFromText(@Body('input') input: string, @Request() req) {
-    return this.txService.createFromText(input, req.user.id);
+    const tx = await this.txService.createFromText(input, req.user.userId);
+    return successResponse(tx, 'Create spending successfully', 201);
   }
 }

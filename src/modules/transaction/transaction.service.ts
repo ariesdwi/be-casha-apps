@@ -17,15 +17,13 @@ export class TransactionService {
       orderBy: { datetime: 'desc' },
     });
 
-    return {
-      transactions: transactions.map((tx) => ({
-        id: tx.id,
-        name: tx.name,
-        amount: tx.amount,
-        datetime: tx.datetime,
-        category: tx.category.name,
-      })),
-    };
+    return transactions.map((tx) => ({
+      id: tx.id,
+      name: tx.name,
+      amount: tx.amount,
+      datetime: tx.datetime,
+      category: tx.category.name,
+    }));
   }
 
   // ✅ Create a transaction linked to the user
