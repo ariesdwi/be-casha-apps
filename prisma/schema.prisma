@@ -1,10 +1,11 @@
-// Generator to create Prisma Client
+// =========================
+// Generator & Datasource
+// =========================
 generator client {
   provider = "prisma-client-js"
   output   = "../generated/prisma"
 }
 
-// PostgreSQL datasource
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -14,14 +15,28 @@ datasource db {
 // Models
 // =========================
 
+// User table
+model User {
+  id            String        @id @default(uuid())
+  email         String        @unique
+  password      String        // store hashed password
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  transactions  Transaction[]
+}
+
 // Category table
 model Category {
-  id          String        @id @default(uuid())
-  name        String        @unique
-  isActive    Boolean       @default(true)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  transactions Transaction[]
+  id            String        @id @default(uuid())
+  name          String        @unique
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  transactions  Transaction[]
 }
 
 // Transaction table
@@ -37,4 +52,8 @@ model Transaction {
   // Relation to Category
   categoryId  String
   category    Category  @relation(fields: [categoryId], references: [id])
+
+  // Relation to User
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
 }

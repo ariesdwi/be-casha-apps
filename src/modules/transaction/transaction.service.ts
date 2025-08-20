@@ -9,9 +9,12 @@ export class TransactionService {
     private openAIService: OpenAIService,
   ) {}
 
-  async findAll() {
+  // ✅ Return transactions only for the logged-in user
+  async findAll(userId: string) {
     const transactions = await this.prisma.transaction.findMany({
+      where: { userId },
       include: { category: true },
+      orderBy: { datetime: 'desc' },
     });
 
     return {
@@ -25,7 +28,8 @@ export class TransactionService {
     };
   }
 
-  async createFromText(input: string) {
+  // ✅ Create a transaction linked to the user
+  async createFromText(input: string, userId: string) {
     const parsed = await this.openAIService.parseTransaction(input);
 
     const category = await this.prisma.category.upsert({
@@ -40,6 +44,7 @@ export class TransactionService {
         amount: parsed.amount,
         datetime: new Date(parsed.datetime),
         category: { connect: { id: category.id } },
+        user: { connect: { id: userId } }, // ✅ link to user
       },
       include: { category: true },
     });
