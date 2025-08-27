@@ -1,0 +1,12 @@
+import { Module } from '@nestjs/common';
+import { BudgetService } from './budget.service';
+import { BudgetController } from './budget.controller';
+import { PrismaService } from '../../common/prisma/prisma.service';
+import { PassportModule } from '@nestjs/passport';
+
+@Module({
+  imports: [PassportModule.register({ defaultStrategy: 'jwt' })],
+  controllers: [BudgetController],
+  providers: [BudgetService, PrismaService],
+})
+export class BudgetModule {}

@@ -15,6 +15,8 @@ model User {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   transactions Transaction[]
+  budgets      Budget[] 
+
 }
 
 model Category {
@@ -24,6 +26,7 @@ model Category {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   transactions Transaction[]
+  budgets      Budget[]
 }
 
 model Transaction {
@@ -39,3 +42,22 @@ model Transaction {
   category   Category @relation(fields: [categoryId], references: [id])
   user       User     @relation(fields: [userId], references: [id])
 }
+
+model Budget {
+  id         String   @id @default(uuid())
+  amount     Float    // planned budget amount
+  spent     Float    @default(0)
+  period     String   // e.g. "monthly", "weekly"
+  startDate  DateTime
+  endDate    DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  userId     String
+  categoryId String
+
+  user       User     @relation(fields: [userId], references: [id])
+  category   Category @relation(fields: [categoryId], references: [id])
+}
+
+

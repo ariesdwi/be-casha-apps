@@ -4,8 +4,16 @@ import { PrismaModule } from './common/prisma/prisma.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
 import { OpenAIModule } from './openai/openai.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BudgetModule } from './modules/budgets/budget.module';
 
 @Module({
-  imports: [PrismaModule, CategoryModule, TransactionModule, OpenAIModule, AuthModule],
+  imports: [
+    PrismaModule,
+    CategoryModule,
+    TransactionModule,
+    OpenAIModule,
+    AuthModule,
+    BudgetModule,
+  ],
 })
 export class AppModule {}
