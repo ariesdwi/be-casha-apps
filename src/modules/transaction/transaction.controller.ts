@@ -20,7 +20,7 @@ export class TransactionController {
   @UseGuards(AuthGuard('jwt'))
   @Get()
   async findAll(@Request() req) {
-    const transactions = await this.txService.findAll(req.user.userId);
+    const transactions = await this.txService.findAll(req.user.id);
     return successResponse(transactions, 'Get transactions successfully', 200);
   }
 
@@ -33,7 +33,7 @@ export class TransactionController {
     @Body() body: any,
     @Request() req,
   ) {
-    const userId = req.user.userId;
+    const userId = req.user.id;
     const input = body.input; // This comes from form-data
 
     // If file is uploaded, process as image (priority)
@@ -71,6 +71,19 @@ export class TransactionController {
   async createFromText(@Body('input') input: string, @Request() req) {
     const tx = await this.txService.createFromText(input, req.user.userId);
     return successResponse(tx, 'Create spending successfully', 201);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('debug-user')
+  async debugUser(@Request() req) {
+    return {
+      message: 'User object from JWT',
+      user: req.user,
+      availableProperties: Object.keys(req.user),
+      userId: req.user.userId,
+      id: req.user.id,
+      areTheyEqual: req.user.userId === req.user.id,
+    };
   }
 
   @UseGuards(AuthGuard('jwt'))

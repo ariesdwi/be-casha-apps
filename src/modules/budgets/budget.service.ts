@@ -112,6 +112,42 @@ export class BudgetService {
     return this.prisma.budget.delete({ where: { id } });
   };
 
+  getTotalBudget = async (userId: string) => {
+    const result = await this.prisma.budget.aggregate({
+      where: { userId },
+      _sum: {
+        amount: true,
+      },
+    });
+
+    return result._sum.amount || 0;
+  };
+
+  // GET TOTAL SPENT for a user
+  getTotalSpent = async (userId: string) => {
+    const result = await this.prisma.budget.aggregate({
+      where: { userId },
+      _sum: {
+        spent: true,
+      },
+    });
+
+    return result._sum.spent || 0;
+  };
+
+  // GET BUDGET SUMMARY (total budget, spent, and remaining)
+  getBudgetSummary = async (userId: string) => {
+    const totalBudget = await this.getTotalBudget(userId);
+    const totalSpent = await this.getTotalSpent(userId);
+    const totalRemaining = totalBudget - totalSpent;
+
+    return {
+      totalBudget,
+      totalSpent,
+      totalRemaining,
+    };
+  };
+
   // Helper to format budget with remaining amount
   private formatBudget(budget) {
     return {
