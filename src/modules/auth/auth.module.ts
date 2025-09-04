@@ -20,11 +20,10 @@
 // })
 // export class AuthModule {}
 
-
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { AuthService } from './auth.service';
-import { ProfileService } from './profile.service'; 
+import { ProfileService } from './profile.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { PrismaService } from '../../common/prisma/prisma.service.js'; // Adjust path
@@ -33,7 +32,7 @@ import { PrismaService } from '../../common/prisma/prisma.service.js'; // Adjust
   imports: [
     JwtModule.register({
       secret: process.env.JWT_SECRET,
-      signOptions: { expiresIn: '60m' },
+      signOptions: { expiresIn: '60d' },
     }),
   ],
   controllers: [AuthController],
