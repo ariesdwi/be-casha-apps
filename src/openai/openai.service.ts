@@ -6,6 +6,26 @@ import OpenAI from 'openai';
 export class OpenAIService {
   private openai: OpenAI;
 
+  // ✅ Expanded real-world categories
+  private allowedCategories = [
+    'Food', // Restaurants, groceries, cafes
+    'Shopping', // Clothes, electronics, goods
+    'Entertainment', // Movies, games, events, hobbies
+    'Transportation', // Gas, public transport, taxis, flights
+    'Utilities', // Electricity, water, internet, phone
+    'Rent', // Housing payments
+    'Healthcare', // Doctor visits, medicine, insurance
+    'Education', // Tuition, courses, books
+    'Travel', // Hotels, flights, tours
+    'Subscriptions', // Netflix, Spotify, apps
+    'Gifts', // Presents, donations
+    'Investments', // Stocks, crypto, funds
+    'Taxes', // Income tax, property tax
+    'Insurance', // Life, car, health
+    'Savings', // Bank deposits, emergency funds
+    'Other', // Anything else
+  ];
+
   constructor(private config: ConfigService) {
     const apiKey = this.config.get<string>('OPENAI_API_KEY');
     if (!apiKey) {
@@ -15,7 +35,6 @@ export class OpenAIService {
   }
 
   async parseTransaction(input: string) {
-    // Get current date for context
     const currentDate = new Date().toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
@@ -24,15 +43,21 @@ export class OpenAIService {
     });
 
     const prompt = `
-You are a financial assistant. Parse the user input into JSON with the following fields:
+You are a financial assistant. Parse the user input into JSON with fields:
 - name: transaction name (string, cleaned up)
 - amount: transaction amount (number, parse Indonesian formats like "rb" = 1000, "jt" = 1000000)
 - datetime: ISO 8601 string (use today's date if not specified: ${currentDate})
-- category: short category name (Food, Transport, Shopping, Bills, etc.)
+- category: MUST BE ONE OF THESE EXACT VALUES: ${this.allowedCategories.join(', ')}
 
-Today's date is: ${currentDate}
-If the user doesn't specify a date, assume today's date.
-If the user specifies a date (like "20-08-2023", "yesterday", "last week"), use that instead.
+STRICT RULES:
+1. Food: restaurants, groceries, cafes
+2. Shopping: goods, clothes, electronics
+3. Entertainment: movies, games, hobbies
+4. Transportation: fuel, taxi, bus, flights
+5. Utilities: electricity, water, internet, phone
+6. Rent: housing payments
+7. Healthcare, Education, Travel, Subscriptions, Gifts, Investments, Taxes, Insurance, Savings: follow standard usage
+8. Other: anything else
 `;
 
     const response = await this.openai.chat.completions.create({
@@ -41,46 +66,24 @@ If the user specifies a date (like "20-08-2023", "yesterday", "last week"), use 
         { role: 'system', content: prompt },
         { role: 'user', content: input },
       ],
-      response_format: { type: 'json_object' }, // ✅ forces valid JSON only
+      response_format: { type: 'json_object' },
     });
 
     const text = response.choices[0].message?.content?.trim();
-
     let parsed: any;
     try {
       parsed = JSON.parse(text ?? '{}');
-    } catch (e) {
+    } catch {
       parsed = {};
     }
 
-    // ✅ Default datetime to start of today UTC if missing
-    if (!parsed.datetime) {
-      const now = new Date();
-      parsed.datetime = new Date(
-        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-      ).toISOString();
+    if (!this.allowedCategories.includes(parsed.category)) {
+      parsed.category = 'Other';
     }
 
-    // ✅ Normalize amount (ensure number)
-    if (parsed.amount) {
-      const amt = String(parsed.amount).toLowerCase().replace(/\s/g, '');
-      if (amt.endsWith('rb'))
-        parsed.amount = parseFloat(amt.replace('rb', '')) * 1000;
-      else if (amt.endsWith('jt'))
-        parsed.amount = parseFloat(amt.replace('jt', '')) * 1000000;
-      else parsed.amount = parseFloat(amt);
-    } else {
-      parsed.amount = 0;
-    }
-
-    // ✅ Ensure category and name exist
-    parsed.category ??= 'Other';
-    parsed.name ??= 'Unknown';
-
-    return parsed;
+    return this.normalizeParsedData(parsed);
   }
 
-  // NEW: Method to parse transaction from image
   async parseTransactionFromImage(imageBuffer: Buffer, imageMimeType: string) {
     const currentDate = new Date().toLocaleDateString('en-US', {
       weekday: 'long',
@@ -90,25 +93,24 @@ If the user specifies a date (like "20-08-2023", "yesterday", "last week"), use 
     });
 
     const prompt = `
-You are a financial assistant. Analyze this receipt image and extract transaction details into JSON with:
+You are a financial assistant. Analyze this receipt image and extract transaction details into JSON:
 - name: merchant/store name (string)
 - amount: total amount paid (number)
 - datetime: ISO 8601 string (use today's date ${currentDate} if not visible)
-- category: short category based on items (Food, Shopping, Electronics, etc.)
+- category: MUST BE ONE OF THESE EXACT VALUES: ${this.allowedCategories.join(', ')}
 
-If date is not visible on receipt, use today's date: ${currentDate}
+STRICT RULES:
+1. Food, Shopping, Entertainment, Transportation, Utilities, Rent
+2. Healthcare, Education, Travel, Subscriptions, Gifts, Investments, Taxes, Insurance, Savings
+3. Other: anything else
 `;
 
-    // Convert buffer to base64 for OpenAI
     const base64Image = imageBuffer.toString('base64');
 
     const response = await this.openai.chat.completions.create({
-      model: 'gpt-4o', // Use GPT-4o for better image understanding
+      model: 'gpt-4o', // GPT-4o for image understanding
       messages: [
-        {
-          role: 'system',
-          content: prompt,
-        },
+        { role: 'system', content: prompt },
         {
           role: 'user',
           content: [
@@ -118,9 +120,7 @@ If date is not visible on receipt, use today's date: ${currentDate}
             },
             {
               type: 'image_url',
-              image_url: {
-                url: `data:${imageMimeType};base64,${base64Image}`,
-              },
+              image_url: { url: `data:${imageMimeType};base64,${base64Image}` },
             },
           ],
         },
@@ -130,21 +130,21 @@ If date is not visible on receipt, use today's date: ${currentDate}
     });
 
     const text = response.choices[0].message?.content?.trim();
-
     let parsed: any;
     try {
       parsed = JSON.parse(text ?? '{}');
-    } catch (e) {
+    } catch {
       throw new Error('Failed to parse AI response');
     }
 
-    // Apply the same normalization as text parsing
+    if (!this.allowedCategories.includes(parsed.category)) {
+      parsed.category = 'Other';
+    }
+
     return this.normalizeParsedData(parsed);
   }
 
-  // Helper method to normalize parsed data (common for both text and image)
   private normalizeParsedData(parsed: any) {
-    // ✅ Default datetime to start of today UTC if missing
     if (!parsed.datetime) {
       const now = new Date();
       parsed.datetime = new Date(
@@ -152,7 +152,6 @@ If date is not visible on receipt, use today's date: ${currentDate}
       ).toISOString();
     }
 
-    // ✅ Normalize amount (ensure number)
     if (parsed.amount) {
       const amt = String(parsed.amount).toLowerCase().replace(/\s/g, '');
       if (amt.endsWith('rb'))
@@ -164,12 +163,13 @@ If date is not visible on receipt, use today's date: ${currentDate}
       parsed.amount = 0;
     }
 
-    // ✅ Ensure category and name exist
     parsed.category ??= 'Other';
     parsed.name ??= 'Unknown';
 
+    if (!this.allowedCategories.includes(parsed.category)) {
+      parsed.category = 'Other';
+    }
+
     return parsed;
   }
-
-  
 }
