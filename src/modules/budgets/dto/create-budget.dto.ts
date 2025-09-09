@@ -1,21 +1,14 @@
-import { IsNumber, IsString, IsDateString, IsUUID } from 'class-validator';
+import { IsNotEmpty, IsString, IsNumber } from 'class-validator';
 
 export class CreateBudgetDto {
   @IsNumber()
   amount: number;
 
   @IsString()
-  period: string; // e.g. "monthly", "weekly"
-
-  @IsDateString()
-  startDate: string;
-
-  @IsDateString()
-  endDate: string;
-
-  @IsUUID()
-  userId: string;
+  @IsNotEmpty()
+  month: string; // e.g., "September 2025"
 
   @IsString()
-  category: string; // client sends category name
+  @IsNotEmpty()
+  category: string;
 }
