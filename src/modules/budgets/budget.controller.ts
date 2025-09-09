@@ -15,6 +15,7 @@ import { BudgetService } from './budget.service';
 import { CreateBudgetDto } from './dto/create-budget.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
 import { FindBudgetsDto } from './dto/find-budgets.dto';
+import { GetBudgetSummaryDto } from './dto/get-budget-summary.dto';
 import { successResponse } from '../../common/response/response.helper';
 
 @Controller('budgets')
@@ -37,11 +38,14 @@ export class BudgetController {
     return successResponse(budgets, 'Budgets retrieved successfully', 200);
   }
 
-  // GET budget summary (must come before :id route)
   @UseGuards(AuthGuard('jwt'))
   @Get('summary')
-  async getBudgetSummary(@Req() req) {
-    const summary = await this.budgetService.getBudgetSummary(req.user.id);
+  async getBudgetSummary(@Req() req, @Query() query: GetBudgetSummaryDto) {
+    const summary = await this.budgetService.getBudgetSummary(
+      req.user.id,
+      query.month,
+      query.year,
+    );
     return successResponse(
       summary,
       'Budget summary retrieved successfully',

@@ -175,10 +175,36 @@ export class BudgetService {
     return result._sum.spent || 0;
   };
 
-  getBudgetSummary = async (userId: string) => {
-    const totalBudget = await this.getTotalBudget(userId);
-    const totalSpent = await this.getTotalSpent(userId);
-    const totalRemaining = totalBudget - totalSpent;
-    return { totalBudget, totalSpent, totalRemaining };
-  };
+  async getBudgetSummary(userId: string, month?: string, year?: string) {
+    let where: any = { userId };
+
+    if (month) {
+      const [y, m] = month.split('-').map(Number);
+      const startDate = new Date(y, m - 1, 1);
+      const endDate = new Date(y, m, 0); // last day of month
+      where.startDate = { gte: startDate, lte: endDate };
+    } else if (year) {
+      where.startDate = {
+        gte: new Date(`${year}-01-01`),
+        lte: new Date(`${year}-12-31`),
+      };
+    }
+
+    const totalBudget = await this.prisma.budget.aggregate({
+      where,
+      _sum: { amount: true },
+    });
+
+    const totalSpent = await this.prisma.budget.aggregate({
+      where,
+      _sum: { spent: true },
+    });
+
+    return {
+      totalBudget: totalBudget._sum.amount || 0,
+      totalSpent: totalSpent._sum.spent || 0,
+      totalRemaining:
+        (totalBudget._sum.amount || 0) - (totalSpent._sum.spent || 0),
+    };
+  }
 }
