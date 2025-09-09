@@ -77,10 +77,15 @@ export class BudgetService {
   };
 
   // --- FIND ALL ---
-  findAll = async (userId: string, year?: string) => {
+  findAll = async (userId: string, year?: string, month?: string) => {
     const where: any = { userId };
 
-    if (year) {
+    if (month) {
+      const [y, m] = month.split('-').map(Number);
+      const startDate = new Date(y, m - 1, 1);
+      const endDate = new Date(y, m, 0); // last day of the month
+      where.startDate = { gte: startDate, lte: endDate };
+    } else if (year) {
       where.startDate = {
         gte: new Date(`${year}-01-01`),
         lte: new Date(`${year}-12-31`),

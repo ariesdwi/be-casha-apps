@@ -30,11 +30,15 @@ export class BudgetController {
     return successResponse(budget, 'Budget created successfully', 201);
   }
 
-  // GET all budgets for authenticated user (optional year filter)
+  // GET all budgets for authenticated user (optional year/month filter)
   @UseGuards(AuthGuard('jwt'))
   @Get()
   async findAll(@Query() query: FindBudgetsDto, @Req() req) {
-    const budgets = await this.budgetService.findAll(req.user.id, query.year);
+    const budgets = await this.budgetService.findAll(
+      req.user.id,
+      query.year,
+      query.month,
+    );
     return successResponse(budgets, 'Budgets retrieved successfully', 200);
   }
 

@@ -1,7 +1,14 @@
-import { IsOptional, IsString } from 'class-validator';
+import { IsOptional, IsString, Matches } from 'class-validator';
 
 export class FindBudgetsDto {
   @IsOptional()
   @IsString()
-  year?: string; // e.g., "2025"
+  year?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, {
+    message: 'Month must be in format YYYY-MM',
+  })
+  month?: string;
 }
