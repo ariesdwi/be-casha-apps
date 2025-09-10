@@ -7,6 +7,20 @@ import customParseFormat from 'dayjs/plugin/customParseFormat';
 
 dayjs.extend(customParseFormat);
 
+export interface FormattedBudget {
+  id: string;
+  amount: number;
+  spent: number;
+  remaining: number;
+  period: string;
+  startDate: Date;
+  endDate: Date;
+  category: {
+    id: string;
+    name: string;
+  };
+}
+
 @Injectable()
 export class BudgetService {
   constructor(private prisma: PrismaService) {}
@@ -35,12 +49,36 @@ export class BudgetService {
     return category;
   }
 
-  private formatBudget(budget: any) {
+  private async calculateSpent(
+    userId: string,
+    categoryId: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<number> {
+    const spentAggregate = await this.prisma.transaction.aggregate({
+      where: {
+        userId,
+        categoryId,
+        datetime: { gte: startDate, lte: endDate },
+      },
+      _sum: { amount: true },
+    });
+    return spentAggregate._sum.amount || 0;
+  }
+
+  private async formatBudget(budget: any): Promise<FormattedBudget> {
+    const spent = await this.calculateSpent(
+      budget.userId,
+      budget.category.id,
+      budget.startDate,
+      budget.endDate,
+    );
+
     return {
       id: budget.id,
       amount: budget.amount,
-      spent: budget.spent || 0,
-      remaining: budget.amount - (budget.spent || 0),
+      spent,
+      remaining: budget.amount - spent,
       period: budget.period,
       startDate: budget.startDate,
       endDate: budget.endDate,
@@ -52,7 +90,10 @@ export class BudgetService {
   }
 
   // --- CREATE ---
-  create = async (data: CreateBudgetDto, userId: string) => {
+  create = async (
+    data: CreateBudgetDto,
+    userId: string,
+  ): Promise<FormattedBudget> => {
     if (!data.month) {
       throw new NotFoundException('Month is required');
     }
@@ -63,7 +104,6 @@ export class BudgetService {
     const budget = await this.prisma.budget.create({
       data: {
         amount: data.amount,
-        spent: 0,
         period,
         startDate,
         endDate,
@@ -77,13 +117,17 @@ export class BudgetService {
   };
 
   // --- FIND ALL ---
-  findAll = async (userId: string, year?: string, month?: string) => {
+  findAll = async (
+    userId: string,
+    year?: string,
+    month?: string,
+  ): Promise<FormattedBudget[]> => {
     const where: any = { userId };
 
     if (month) {
       const [y, m] = month.split('-').map(Number);
       const startDate = new Date(y, m - 1, 1);
-      const endDate = new Date(y, m, 0); // last day of the month
+      const endDate = new Date(y, m, 0);
       where.startDate = { gte: startDate, lte: endDate };
     } else if (year) {
       where.startDate = {
@@ -97,11 +141,15 @@ export class BudgetService {
       include: { category: true },
     });
 
-    return budgets.map((b) => this.formatBudget(b));
+    const results: FormattedBudget[] = [];
+    for (const b of budgets) {
+      results.push(await this.formatBudget(b));
+    }
+    return results;
   };
 
   // --- FIND ONE ---
-  findOne = async (id: string, userId: string) => {
+  findOne = async (id: string, userId: string): Promise<FormattedBudget> => {
     const budget = await this.prisma.budget.findUnique({
       where: { id },
       include: { category: true },
@@ -115,7 +163,11 @@ export class BudgetService {
   };
 
   // --- UPDATE ---
-  update = async (id: string, data: UpdateBudgetDto, userId: string) => {
+  update = async (
+    id: string,
+    data: UpdateBudgetDto,
+    userId: string,
+  ): Promise<FormattedBudget> => {
     const budget = await this.prisma.budget.findUnique({ where: { id } });
     if (!budget || budget.userId !== userId) {
       throw new NotFoundException('Budget not found');
@@ -164,29 +216,21 @@ export class BudgetService {
   };
 
   // --- SUMMARY ---
-  private getTotalBudget = async (userId: string) => {
-    const result = await this.prisma.budget.aggregate({
-      where: { userId },
-      _sum: { amount: true },
-    });
-    return result._sum.amount || 0;
-  };
-
-  private getTotalSpent = async (userId: string) => {
-    const result = await this.prisma.budget.aggregate({
-      where: { userId },
-      _sum: { spent: true },
-    });
-    return result._sum.spent || 0;
-  };
-
-  async getBudgetSummary(userId: string, month?: string, year?: string) {
+  async getBudgetSummary(
+    userId: string,
+    month?: string,
+    year?: string,
+  ): Promise<{
+    totalBudget: number;
+    totalSpent: number;
+    totalRemaining: number;
+  }> {
     let where: any = { userId };
 
     if (month) {
       const [y, m] = month.split('-').map(Number);
       const startDate = new Date(y, m - 1, 1);
-      const endDate = new Date(y, m, 0); // last day of month
+      const endDate = new Date(y, m, 0);
       where.startDate = { gte: startDate, lte: endDate };
     } else if (year) {
       where.startDate = {
@@ -195,21 +239,29 @@ export class BudgetService {
       };
     }
 
-    const totalBudget = await this.prisma.budget.aggregate({
+    const budgets = await this.prisma.budget.findMany({
       where,
-      _sum: { amount: true },
+      include: { category: true },
     });
 
-    const totalSpent = await this.prisma.budget.aggregate({
-      where,
-      _sum: { spent: true },
-    });
+    let totalBudget = 0;
+    let totalSpent = 0;
+
+    for (const b of budgets) {
+      const spent = await this.calculateSpent(
+        b.userId,
+        b.category.id,
+        b.startDate,
+        b.endDate,
+      );
+      totalBudget += b.amount;
+      totalSpent += spent;
+    }
 
     return {
-      totalBudget: totalBudget._sum.amount || 0,
-      totalSpent: totalSpent._sum.spent || 0,
-      totalRemaining:
-        (totalBudget._sum.amount || 0) - (totalSpent._sum.spent || 0),
+      totalBudget,
+      totalSpent,
+      totalRemaining: totalBudget - totalSpent,
     };
   }
 }

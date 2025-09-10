@@ -1,4 +1,3 @@
-
 // import {
 //   Injectable,
 //   ConflictException,
@@ -74,7 +73,6 @@
 //   }
 // }
 
-
 import {
   Injectable,
   ConflictException,
@@ -97,7 +95,15 @@ export class AuthService {
   async signUp(signUpDto: SignUpDto) {
     const { email, password, ...rest } = signUpDto;
 
-    // check duplicate
+    // Validate required fields
+    if (!email) {
+      throw new ConflictException('Email is required');
+    }
+    if (!password) {
+      throw new ConflictException('Password is required');
+    }
+
+    // Check for duplicate email
     const existingUser = await this.prisma.user.findUnique({
       where: { email },
     });
@@ -105,10 +111,10 @@ export class AuthService {
       throw new ConflictException('User already exists');
     }
 
-    // hash password
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // create user
+    // Create user
     const user = await this.prisma.user.create({
       data: {
         email,
@@ -121,7 +127,7 @@ export class AuthService {
       },
     });
 
-    // issue JWT
+    // Generate JWT
     const payload = { sub: user.id, email: user.email };
     const accessToken = this.jwtService.sign(payload);
 
@@ -134,17 +140,23 @@ export class AuthService {
   async login(loginDto: LoginDto) {
     const { email, password } = loginDto;
 
+    if (!email) throw new UnauthorizedException('Email is required');
+    if (!password) throw new UnauthorizedException('Password is required');
+
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      throw new UnauthorizedException('Invalid credentials');
+    if (!user) {
+      throw new UnauthorizedException('User not found'); // <-- explicit
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Password is incorrect'); // <-- explicit
     }
 
     const payload = { sub: user.id, email: user.email };
     const accessToken = this.jwtService.sign(payload);
 
-    return {
-      access_token: accessToken,
-    };
+    return { access_token: accessToken };
   }
 
   async validateUser(payload: any) {
