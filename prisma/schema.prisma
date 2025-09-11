@@ -48,8 +48,8 @@ model Transaction {
 
 model Budget {
   id         String   @id @default(uuid())
-  amount     Float    // planned budget amount
-  spent     Float    @default(0)
+  amount     Float
+  spent      Float    @default(0)
   period     String   // e.g. "monthly", "weekly"
   startDate  DateTime
   endDate    DateTime
@@ -61,6 +61,10 @@ model Budget {
 
   user       User     @relation(fields: [userId], references: [id])
   category   Category @relation(fields: [categoryId], references: [id])
+
+  // 🚨 Ensure unique budget per user + category + month
+  @@unique([userId, categoryId, startDate, endDate])
 }
+
 
 

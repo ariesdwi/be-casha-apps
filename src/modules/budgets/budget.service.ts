@@ -1,7 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateBudgetDto } from './dto/create-budget.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 
@@ -29,7 +34,7 @@ export class BudgetService {
   private parseMonthToDates(monthStr: string) {
     const parsed = dayjs(monthStr, 'MMMM YYYY'); // e.g. "September 2025"
     if (!parsed.isValid()) {
-      throw new NotFoundException(
+      throw new BadRequestException(
         'Invalid month format. Use format like "September 2025"',
       );
     }
@@ -90,38 +95,67 @@ export class BudgetService {
   }
 
   // --- CREATE ---
-  create = async (
+  async create(
     data: CreateBudgetDto,
     userId: string,
-  ): Promise<FormattedBudget> => {
+  ): Promise<FormattedBudget> {
     if (!data.month) {
-      throw new NotFoundException('Month is required');
+      throw new BadRequestException('Month is required');
     }
 
     const category = await this.getOrCreateCategory(data.category);
     const { startDate, endDate, period } = this.parseMonthToDates(data.month);
 
-    const budget = await this.prisma.budget.create({
-      data: {
-        amount: data.amount,
-        period,
-        startDate,
-        endDate,
+    // Check if budget already exists before trying to create
+    const existingBudget = await this.prisma.budget.findFirst({
+      where: {
         userId,
         categoryId: category.id,
+        startDate,
+        endDate,
       },
-      include: { category: true },
     });
 
-    return this.formatBudget(budget);
-  };
+    if (existingBudget) {
+      throw new BadRequestException(
+        `You already have a budget for category "${category.name}" in ${data.month}. Please update the existing budget instead.`,
+      );
+    }
+
+    try {
+      const budget = await this.prisma.budget.create({
+        data: {
+          amount: data.amount,
+          period,
+          startDate,
+          endDate,
+          userId,
+          categoryId: category.id,
+        },
+        include: { category: true },
+      });
+
+      return this.formatBudget(budget);
+    } catch (error) {
+      if (error instanceof PrismaClientKnownRequestError) {
+        if (error.code === 'P2002') {
+          // Fallback error handling in case the pre-check missed something
+          throw new BadRequestException(
+            `You already have a budget for category "${category.name}" in ${data.month}. Please update the existing budget instead.`,
+          );
+        }
+      }
+
+      throw error;
+    }
+  }
 
   // --- FIND ALL ---
-  findAll = async (
+  async findAll(
     userId: string,
     year?: string,
     month?: string,
-  ): Promise<FormattedBudget[]> => {
+  ): Promise<FormattedBudget[]> {
     const where: any = { userId };
 
     if (month) {
@@ -146,10 +180,10 @@ export class BudgetService {
       results.push(await this.formatBudget(b));
     }
     return results;
-  };
+  }
 
   // --- FIND ONE ---
-  findOne = async (id: string, userId: string): Promise<FormattedBudget> => {
+  async findOne(id: string, userId: string): Promise<FormattedBudget> {
     const budget = await this.prisma.budget.findUnique({
       where: { id },
       include: { category: true },
@@ -160,14 +194,14 @@ export class BudgetService {
     }
 
     return this.formatBudget(budget);
-  };
+  }
 
   // --- UPDATE ---
-  update = async (
+  async update(
     id: string,
     data: UpdateBudgetDto,
     userId: string,
-  ): Promise<FormattedBudget> => {
+  ): Promise<FormattedBudget> {
     const budget = await this.prisma.budget.findUnique({ where: { id } });
     if (!budget || budget.userId !== userId) {
       throw new NotFoundException('Budget not found');
@@ -190,30 +224,61 @@ export class BudgetService {
       period = parsed.period;
     }
 
-    const updatedBudget = await this.prisma.budget.update({
-      where: { id },
-      data: {
-        amount: data.amount ?? budget.amount,
-        period,
-        startDate,
-        endDate,
-        categoryId,
-      },
-      include: { category: true },
-    });
+    // Check if the update would create a duplicate
+    if (categoryId && startDate && endDate) {
+      const existingBudget = await this.prisma.budget.findFirst({
+        where: {
+          userId,
+          categoryId,
+          startDate,
+          endDate,
+          NOT: { id }, // Exclude the current budget from the check
+        },
+      });
 
-    return this.formatBudget(updatedBudget);
-  };
+      if (existingBudget) {
+        throw new BadRequestException(
+          `You already have a budget for this category in ${data.month || this.formatMonthFromDate(startDate)}.`,
+        );
+      }
+    }
+
+    try {
+      const updatedBudget = await this.prisma.budget.update({
+        where: { id },
+        data: {
+          amount: data.amount ?? budget.amount,
+          period,
+          startDate,
+          endDate,
+          categoryId,
+        },
+        include: { category: true },
+      });
+
+      return this.formatBudget(updatedBudget);
+    } catch (error) {
+      if (error instanceof PrismaClientKnownRequestError) {
+        if (error.code === 'P2002') {
+          throw new BadRequestException(
+            'Cannot update budget. A budget with these parameters already exists.',
+          );
+        }
+      }
+
+      throw error;
+    }
+  }
 
   // --- DELETE ---
-  remove = async (id: string, userId: string) => {
+  async remove(id: string, userId: string) {
     const budget = await this.prisma.budget.findUnique({ where: { id } });
     if (!budget || budget.userId !== userId) {
       throw new NotFoundException('Budget not found');
     }
 
     return this.prisma.budget.delete({ where: { id } });
-  };
+  }
 
   // --- SUMMARY ---
   async getBudgetSummary(
@@ -263,5 +328,10 @@ export class BudgetService {
       totalSpent,
       totalRemaining: totalBudget - totalSpent,
     };
+  }
+
+  // Helper method to format date back to month string
+  private formatMonthFromDate(date: Date): string {
+    return dayjs(date).format('MMMM YYYY');
   }
 }
