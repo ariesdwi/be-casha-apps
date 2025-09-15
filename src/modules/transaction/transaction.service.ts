@@ -1,117 +1,11 @@
-// import { Injectable } from '@nestjs/common';
-// import { PrismaService } from '../../common/prisma/prisma.service.js';
-// import { OpenAIService } from '../../openai/openai.service.js';
-
-// @Injectable()
-// export class TransactionService {
-//   constructor(
-//     private prisma: PrismaService,
-//     private openAIService: OpenAIService,
-//   ) {}
-
-//   // ✅ Return transactions only for the logged-in user
-//   async findAll(userId: string) {
-//     const transactions = await this.prisma.transaction.findMany({
-//       where: { userId },
-//       include: { category: true },
-//       orderBy: { datetime: 'desc' },
-//     });
-
-//     return transactions.map((tx) => ({
-//       id: tx.id,
-//       name: tx.name,
-//       amount: tx.amount,
-//       datetime: tx.datetime,
-//       category: tx.category.name,
-//     }));
-//   }
-
-//   // ✅ Create a transaction from text input
-//   async createFromText(input: string, userId: string) {
-//     const parsed = await this.openAIService.parseTransaction(input);
-//     return this.createTransaction(parsed, userId);
-//   }
-
-//   // ✅ NEW: Create a transaction from image (receipt)
-//   async createFromImage(
-//     imageBuffer: Buffer,
-//     imageMimeType: string,
-//     userId: string,
-//   ) {
-//     const parsed = await this.openAIService.parseTransactionFromImage(
-//       imageBuffer,
-//       imageMimeType,
-//     );
-//     return this.createTransaction(parsed, userId);
-//   }
-
-//   // ✅ Refactored: Common transaction creation logic
-//   private async createTransaction(parsed: any, userId: string) {
-//     // Ensure datetime and amount are properly formatted
-//     const txDatetime = new Date(parsed.datetime);
-//     const txAmount = Number(parsed.amount) || 0;
-
-//     // Upsert category
-//     const category = await this.prisma.category.upsert({
-//       where: { name: parsed.category },
-//       update: {},
-//       create: { name: parsed.category, isActive: true },
-//     });
-
-//     // Create transaction
-//     const transaction = await this.prisma.transaction.create({
-//       data: {
-//         name: parsed.name,
-//         amount: txAmount,
-//         datetime: txDatetime,
-//         category: { connect: { id: category.id } },
-//         user: { connect: { id: userId } },
-//       },
-//       include: { category: true },
-//     });
-
-//     // Update corresponding budget if it exists
-//     await this.updateBudget(userId, category.id, txDatetime, txAmount);
-
-//     return {
-//       id: transaction.id,
-//       name: transaction.name,
-//       amount: transaction.amount,
-//       datetime: transaction.datetime,
-//       category: transaction.category.name,
-//     };
-//   }
-
-//   // ✅ Helper: Update budget if exists
-//   private async updateBudget(
-//     userId: string,
-//     categoryId: string,
-//     datetime: Date,
-//     amount: number,
-//   ) {
-//     const budget = await this.prisma.budget.findFirst({
-//       where: {
-//         userId,
-//         categoryId,
-//         startDate: { lte: datetime },
-//         endDate: { gte: datetime },
-//       },
-//     });
-
-//     if (budget) {
-//       await this.prisma.budget.update({
-//         where: { id: budget.id },
-//         data: {
-//           spent: (budget.spent || 0) + amount,
-//         },
-//       });
-//     }
-//   }
-// }
-
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { OpenAIService } from '../../openai/openai.service.js';
+import dayjs from 'dayjs';
 
 @Injectable()
 export class TransactionService {
@@ -128,13 +22,7 @@ export class TransactionService {
       orderBy: { datetime: 'desc' },
     });
 
-    return transactions.map((tx) => ({
-      id: tx.id,
-      name: tx.name,
-      amount: tx.amount,
-      datetime: tx.datetime,
-      category: tx.category.name,
-    }));
+    return transactions.map((tx) => this.mapTransaction(tx));
   }
 
   // ✅ Create a transaction from text input
@@ -143,7 +31,7 @@ export class TransactionService {
     return this.createTransaction(parsed, userId);
   }
 
-  // ✅ NEW: Create a transaction from image (receipt)
+  // ✅ Create a transaction from image (receipt)
   async createFromImage(
     imageBuffer: Buffer,
     imageMimeType: string,
@@ -158,7 +46,7 @@ export class TransactionService {
 
   // ✅ Refactored: Common transaction creation logic
   private async createTransaction(parsed: any, userId: string) {
-    const txDatetime = new Date(parsed.datetime);
+    const txDatetime = this.parseDatetime(parsed);
     const txAmount = Number(parsed.amount) || 0;
 
     const category = await this.prisma.category.upsert({
@@ -187,9 +75,13 @@ export class TransactionService {
   async updateTransaction(
     userId: string,
     transactionId: string,
-    data: { name?: string; amount?: number; datetime?: Date; category?: string },
+    data: {
+      name?: string;
+      amount?: number;
+      datetime?: Date;
+      category?: string;
+    },
   ) {
-    // Cek dulu apakah transaksi ada & milik user ini
     const existing = await this.prisma.transaction.findUnique({
       where: { id: transactionId },
       include: { category: true },
@@ -198,7 +90,6 @@ export class TransactionService {
     if (!existing) throw new NotFoundException('Transaction not found');
     if (existing.userId !== userId) throw new ForbiddenException();
 
-    // Handle category (jika ada update)
     let categoryId = existing.categoryId;
     if (data.category) {
       const category = await this.prisma.category.upsert({
@@ -272,5 +163,28 @@ export class TransactionService {
       datetime: tx.datetime,
       category: tx.category.name,
     };
+  }
+
+  // ✅ Helper: parse datetime safely
+  private parseDatetime(parsed: any): Date {
+    let txDatetime: Date;
+
+    if (parsed.datetime) {
+      // Full datetime provided
+      txDatetime = new Date(parsed.datetime);
+    } else if (parsed.date) {
+      // Date (with optional time)
+      const time = parsed.time ?? '00:00';
+      txDatetime = dayjs(`${parsed.date} ${time}`, 'YYYY-MM-DD HH:mm').toDate();
+    } else {
+      // Fallback: now
+      txDatetime = new Date();
+    }
+
+    if (!dayjs(txDatetime).isValid()) {
+      throw new Error(`Invalid datetime: ${JSON.stringify(parsed)}`);
+    }
+
+    return txDatetime;
   }
 }

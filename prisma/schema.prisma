@@ -66,5 +66,38 @@ model Budget {
   @@unique([userId, categoryId, startDate, endDate])
 }
 
+model Subscription {
+  id                     String   @id @default(uuid())
+  userId                 String
+  user                   User     @relation(fields: [userId], references: [id])
+  
+  productId              String   // e.g. "casha_premium_monthly"
+  originalTransactionId  String   // from Apple StoreKit (used to identify the subscription)
+  purchaseDate           DateTime
+  expiryDate             DateTime
+  isActive               Boolean  @default(true)
+  
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@index([userId])
+  @@unique([originalTransactionId]) // Prevent duplicates from Apple
+}
+
+model Purchase {
+  id            String   @id @default(uuid())
+  userId        String
+  productId     String   // e.g. casha.premium.monthly, casha.premium.yearly, casha.lifetime
+  type          String   // consumable, non_consumable, auto_renew, non_renew
+  transactionId String   @unique
+  receiptData   String
+  isActive      Boolean  @default(true)
+  expiresAt     DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User     @relation(fields: [userId], references: [id])
+}
+
 
 
