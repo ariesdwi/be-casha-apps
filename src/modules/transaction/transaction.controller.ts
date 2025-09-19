@@ -10,11 +10,11 @@ import {
   UseInterceptors,
   UploadedFile,
   Param,
+  BadRequestException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { TransactionService } from './transaction.service';
-import { successResponse } from '../../common/response/response.helper';
 
 @Controller('transactions')
 export class TransactionController {
@@ -24,8 +24,7 @@ export class TransactionController {
   @UseGuards(AuthGuard('jwt'))
   @Get()
   async findAll(@Request() req) {
-    const transactions = await this.txService.findAll(req.user.id);
-    return successResponse(transactions, 'Get transactions successfully', 200);
+    return this.txService.findAll(req.user.id);
   }
 
   // ✅ SINGLE ENDPOINT for both text and image using form-data
@@ -41,29 +40,16 @@ export class TransactionController {
     const input = body.input; // from form-data
 
     if (file) {
-      const tx = await this.txService.createFromImage(
-        file.buffer,
-        file.mimetype,
-        userId,
-      );
-      return successResponse(
-        tx,
-        'Create spending from receipt successfully',
-        201,
-      );
+      return this.txService.createFromImage(file.buffer, file.mimetype, userId);
     }
 
     if (input) {
-      const tx = await this.txService.createFromText(input, userId);
-      return successResponse(tx, 'Create spending successfully', 201);
+      return this.txService.createFromText(input, userId);
     }
 
-    return {
-      code: 400,
-      status: 'error',
-      message: 'Either file upload or text input is required',
-      data: null,
-    };
+    throw new BadRequestException(
+      'Either file upload or text input is required',
+    );
   }
 
   // ✅ Update transaction
@@ -74,24 +60,21 @@ export class TransactionController {
     @Body() body: any,
     @Request() req,
   ) {
-    const tx = await this.txService.updateTransaction(req.user.id, id, body);
-    return successResponse(tx, 'Update transaction successfully', 200);
+    return this.txService.updateTransaction(req.user.id, id, body);
   }
 
   // ✅ Delete transaction
   @UseGuards(AuthGuard('jwt'))
   @Delete(':id')
   async deleteTransaction(@Param('id') id: string, @Request() req) {
-    const result = await this.txService.deleteTransaction(req.user.id, id);
-    return successResponse(result, 'Delete transaction successfully', 200);
+    return this.txService.deleteTransaction(req.user.id, id);
   }
 
   // ✅ Keep separate endpoints for backward compatibility
   @UseGuards(AuthGuard('jwt'))
   @Post('create-text')
   async createFromText(@Body('input') input: string, @Request() req) {
-    const tx = await this.txService.createFromText(input, req.user.id);
-    return successResponse(tx, 'Create spending successfully', 201);
+    return this.txService.createFromText(input, req.user.id);
   }
 
   @UseGuards(AuthGuard('jwt'))
@@ -101,19 +84,14 @@ export class TransactionController {
     @UploadedFile() file: Express.Multer.File,
     @Request() req,
   ) {
-    const tx = await this.txService.createFromImage(
+    return this.txService.createFromImage(
       file.buffer,
       file.mimetype,
       req.user.id,
     );
-    return successResponse(
-      tx,
-      'Create spending from receipt successfully',
-      201,
-    );
   }
 
-  // ✅ Debug endpoint (opsional)
+  // ✅ Debug endpoint (optional, raw object)
   @UseGuards(AuthGuard('jwt'))
   @Get('debug-user')
   async debugUser(@Request() req) {

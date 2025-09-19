@@ -19,8 +19,16 @@ model User {
   updatedAt    DateTime      @updatedAt
   transactions Transaction[]
   budgets      Budget[] 
+  
+  isVerified Boolean @default(false)
 
+  // relations
+  verificationTokens VerificationToken[]
+  passwordResetTokens PasswordResetToken[]
+
+  @@map("users")
 }
+
 
 model Category {
   id           String        @id @default(uuid())
@@ -68,3 +76,33 @@ model Budget {
 
 
 
+model VerificationToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  email     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("verification_tokens")
+  @@index([token])
+  @@index([email])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  email     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  used      Boolean  @default(false)
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("password_reset_tokens")
+  @@index([token])
+  @@index([email])
+}
